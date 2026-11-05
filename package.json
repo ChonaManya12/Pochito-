@@ -1,0 +1,1 @@
+{"name":"pochito","private":true,"type":"module","scripts":{"dev":"wrangler dev","deploy":"wrangler deploy","test":"node --test","check":"wrangler deploy --dry-run","keys":"web-push generate-vapid-keys --json"},"dependencies":{"web-push":"^3.6.7"},"devDependencies":{"wrangler":"^4.0.0"}}
