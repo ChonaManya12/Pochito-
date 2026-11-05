@@ -6,8 +6,11 @@ function validSubscription(s) {
   try { const u=new URL(s.endpoint); return u.protocol==='https:' && (u.hostname==='web.push.apple.com'||u.hostname.endsWith('.push.apple.com')||u.hostname==='fcm.googleapis.com'||u.hostname==='updates.push.services.mozilla.com') && !u.port && typeof s.keys?.auth==='string' && s.keys.auth.length<100 && typeof s.keys?.p256dh==='string' && s.keys.p256dh.length<200; } catch {return false;}
 }
 async function notify(env,sub,payload) {
-  const request=webpush.generateRequestDetails(sub,JSON.stringify(payload),{TTL:300,urgency:'normal',vapidDetails:{subject:env.VAPID_SUBJECT,publicKey:env.VAPID_PUBLIC_KEY,privateKey:env.VAPID_PRIVATE_KEY}});
-  return fetch(request.endpoint,{method:request.method,headers:request.headers,body:request.body,redirect:'error'});
+  let request;
+  try {request=webpush.generateRequestDetails(sub,JSON.stringify(payload),{TTL:300,urgency:'normal',vapidDetails:{subject:env.VAPID_SUBJECT,publicKey:env.VAPID_PUBLIC_KEY,privateKey:env.VAPID_PRIVATE_KEY}});}
+  catch(error){console.error('push_preparation_failed',String(error.message).replace(/https?:\/\/\S+/g,'[URL]').replace(/[A-Za-z0-9_-]{32,}/g,'[redacted]'));throw new Error('No se pudo preparar la notificación.');}
+  try{return await fetch(request.endpoint,{method:request.method,headers:request.headers,body:request.body,redirect:'manual'});}
+  catch(error){console.error('push_transport_failed',String(error.message).replace(/https?:\/\/\S+/g,'[URL]').replace(/[A-Za-z0-9_-]{32,}/g,'[redacted]'));throw error;}
 }
 export default {
   async fetch(req,env) {
@@ -60,7 +63,7 @@ export default {
         return json({ok:true});
       }
       return json({error:'Ruta no disponible.'},404);
-    } catch {return json({error:'No se pudo guardar. Intentá nuevamente.'},500);}
+    } catch {return url.pathname==='/api/test'?json({error:'No se pudo enviar la notificación. Intentá nuevamente.'},502):json({error:'No se pudo guardar. Intentá nuevamente.'},500);}
   },
   async scheduled(event,env) {
     if(!env.APP_KEY_HASH||!env.VAPID_PRIVATE_KEY) return;

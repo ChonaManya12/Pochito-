@@ -39,7 +39,7 @@ test('cron cifra push y no repite una entrega confirmada',async()=>{
  const {env,request,subscription,sql}=setup();
  await worker.fetch(request('device',{subscription,schedule:[defaults[0]],zone:'America/Montevideo'}),env);
  const original=globalThis.fetch;let calls=0;
- globalThis.fetch=async(url,options)=>{calls++;assert.equal(url,subscription.endpoint);assert.equal(options.headers['Content-Encoding'],'aes128gcm');assert.ok(options.headers.Authorization.startsWith('vapid '));assert.ok(options.body.length>0);return new Response('',{status:201});};
+ globalThis.fetch=async(url,options)=>{calls++;assert.equal(options.redirect,'manual');assert.equal(url,subscription.endpoint);assert.equal(options.headers['Content-Encoding'],'aes128gcm');assert.ok(options.headers.Authorization.startsWith('vapid '));assert.ok(options.body.length>0);return new Response('',{status:201});};
  try{const event={scheduledTime:Date.parse('2026-11-05T12:00Z')};await worker.scheduled(event,env);await worker.scheduled(event,env);assert.equal(calls,1);assert.equal(sql.prepare('SELECT state FROM deliveries').get().state,'sent');}finally{globalThis.fetch=original;}
 });
 test('suscripción vencida se elimina',async()=>{
