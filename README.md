@@ -4,7 +4,7 @@ App web instalable para el iPhone, en español. Rutina editable de comida y pase
 
 ## Estado
 
-Código preparado. No está publicada ni tiene notificaciones activas hasta completar el despliegue y una prueba en el iPhone. El historial es local a cada dispositivo; no se comparte entre personas. Los horarios se envían al servidor al guardar si los avisos ya están activados. No hay cuenta de usuario: el servicio es privado mediante una clave aleatoria de acceso.
+Publicada en https://pochito.nachogondel12.workers.dev con Workers Free, D1, cron cada minuto y claves configuradas. No se activó ningún plan de pago ni se compró dominio. Falta instalarla, activar permisos y verificar la recepción en el iPhone. El historial es local a cada dispositivo; no se comparte entre personas. Los horarios se envían al servidor al guardar si los avisos ya están activados. No hay cuenta de usuario: el servicio es privado mediante una clave aleatoria de acceso.
 
 Horarios iniciales editables (supuestos a confirmar): comida y paseo 09:00, comida y paseo 12:30, paseo 17:00, comida y último paseo 21:00. Zona America/Montevideo. Son horarios de organización, no una recomendación de alimentación.
 
@@ -38,4 +38,4 @@ Los avisos dependen de internet, permisos, modos de concentración, iOS y la dis
 
 ## Validación pendiente
 
-Las pruebas automáticas cubren horarios, zonas, cambio de fecha y validación. El build comprueba el bundle del Worker. La instalación, permiso y recepción real deben comprobarse en el iPhone tras publicar. Sin ese paso no se afirma que los avisos ya lleguen.
+Ocho pruebas automáticas cubren horarios, zonas, cambio de fecha, validación, autorización de API, persistencia, cifrado push, deduplicación y suscripciones vencidas. El build comprueba el bundle del Worker. La instalación, permiso y recepción real deben comprobarse en el iPhone tras publicar. Sin ese paso no se afirma que los avisos ya lleguen.
