@@ -1,10 +1,10 @@
 # Pochito 🐾
 
-App web instalable para el iPhone, en español. Rutina editable de comida y paseos, registro local y servicio Web Push mediante Cloudflare Workers + D1. No usa Lovable.
+App web instalable para el iPhone, en español. Rutina editable de comida y paseos, registro compartido opcional y servicio Web Push mediante Cloudflare Workers + D1. No usa Lovable.
 
 ## Estado
 
-Publicada en https://pochito.nachogondel12.workers.dev con Workers Free, D1, cron cada minuto y claves configuradas. No se activó ningún plan de pago ni se compró dominio. Falta instalarla, activar permisos y verificar la recepción en el iPhone. El historial es local a cada dispositivo; no se comparte entre personas. Los horarios se envían al servidor al guardar si los avisos ya están activados. No hay cuenta de usuario: el servicio es privado mediante una clave aleatoria de acceso.
+Publicada en https://pochito.nachogondel12.workers.dev con Workers Free, D1, cron cada minuto y claves configuradas. No se activó ningún plan de pago ni se compró dominio. Falta instalarla, activar permisos y verificar la recepción en el iPhone. El historial puede conectarse al registro compartido desde Historial con la misma clave en ambos dispositivos. Se actualiza cada 15 segundos mientras está abierta y al volver a abrirla. Sin conexión muestra la última copia y no confirma nuevas escrituras. El modo local se conserva hasta conectarlo; importar el historial anterior es opcional y no lo borra. Los horarios se envían al servidor al guardar si los avisos ya están activados. No hay cuenta de usuario: el servicio es privado mediante una clave aleatoria de acceso.
 
 Horarios iniciales editables (supuestos a confirmar): comida y paseo 09:00, comida y paseo 12:30, paseo 17:00, comida y último paseo 21:00. Zona America/Montevideo. Son horarios de organización, no una recomendación de alimentación.
 
@@ -32,10 +32,16 @@ No publicar secretos en GitHub. .dev.vars y .env están excluidos. Para rotar cl
 
 El cron calcula el minuto local por zona IANA, también al cambiar horario de verano. Cada cuidado tiene una entrega por dispositivo y día; los avisos se cifran mediante web-push y se envían con fetch desde el Worker. Solo se aceptan endpoints de proveedores push conocidos, evitando usar el servidor para peticiones arbitrarias. Las API privadas requieren clave y mismo origen. El endpoint público de configuración solo revela la clave VAPID pública.
 
-D1 guarda la suscripción push, zona y horarios, sin email ni historial. Desactivar elimina la suscripción del servidor. Los envíos guardan solo identificadores y estado, con limpieza a los 7 días. El acceso privado es para uso personal; no está pensado como servicio multiusuario abierto.
+D1 guarda la suscripción push, zona y horarios, sin email. También guarda el historial compartido en care_history, con fecha, cuidado, estado y revisión. Desactivar elimina la suscripción del servidor. Los envíos guardan solo identificadores y estado, con limpieza a los 7 días. El acceso privado es para uso personal; no está pensado como servicio multiusuario abierto.
 
 Los avisos dependen de internet, permisos, modos de concentración, iOS y la disponibilidad del proveedor. No son una alarma exacta ni tienen entrega garantizada: el cron procesa el minuto actual; un fallo prolongado puede omitir un aviso y una caída entre reservar y enviar puede dejarlo sin entregar. Un reintento tras respuesta incierta también puede repetirlo; el tag agrupa la notificación. No usar GitHub Actions como reloj: aquí solo guarda código. La app no finge avisos mediante temporizadores del navegador.
 
 ## Validación pendiente
 
-Ocho pruebas automáticas cubren horarios, zonas, cambio de fecha, validación, autorización de API, persistencia, cifrado push, deduplicación y suscripciones vencidas. El build comprueba el bundle del Worker. La instalación, permiso y recepción real deben comprobarse en el iPhone tras publicar. Sin ese paso no se afirma que los avisos ya lleguen.
+Once pruebas automáticas cubren horarios, zonas, cambio de fecha, validación, autorización de API, persistencia, cifrado push, deduplicación, suscripciones vencidas, historial entre dos dispositivos, conflictos y migración idempotente. El build comprueba el bundle del Worker. La instalación, permiso y recepción real deben comprobarse en el iPhone tras publicar. Sin ese paso no se afirma que los avisos ya lleguen.
+
+## Conectar dos dispositivos
+
+En cada celular, abrir Historial, ingresar la misma clave privada existente y tocar Conectar registro compartido. No hace falta activar notificaciones para compartir el registro. Desde cada dispositivo con datos anteriores se puede tocar Importar mi historial anterior. La importación no duplica cuidados ni revive los que otro dispositivo deshizo. Los horarios siguen siendo propios de cada dispositivo.
+
+Las escrituras modifican un solo cuidado por fecha y requieren su última revisión. Un cambio desactualizado recibe conflicto y refresca el registro en lugar de reemplazarlo. Deshacer conserva una marca en la base para impedir que una importación vieja lo vuelva a activar. Se muestran los últimos 60 cuidados realizados y se sincronizan los últimos 2000 estados; los anteriores permanecen en D1. La clave da acceso al único espacio personal de Pochito; no hay espacios públicos ni registro abierto. La clave y sus secretos no se incluyen en el repositorio.

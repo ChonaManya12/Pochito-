@@ -16,18 +16,38 @@ export default {
     const configured=!!(env.DB&&env.APP_KEY_HASH&&env.VAPID_PUBLIC_KEY&&env.VAPID_PRIVATE_KEY&&env.VAPID_SUBJECT);
     if(url.pathname==='/api/config'&&req.method==='GET') return json({configured,publicKey:configured?env.VAPID_PUBLIC_KEY:null});
     if(!configured) return json({error:'Falta activar el servicio de avisos.'},503);
-    if(req.headers.get('Origin')!==url.origin) return json({error:'Origen no permitido.'},403);
+    if(req.headers.get('Origin')!==url.origin && !(req.method==='GET'&&!req.headers.has('Origin'))) return json({error:'Origen no permitido.'},403);
     const token=req.headers.get('Authorization')?.replace(/^Bearer /,'')||'';
     if(token.length<32||await digest(token)!==env.APP_KEY_HASH) return json({error:'La clave de acceso no es válida.'},401);
     const device=req.headers.get('X-Device-ID')||'';
     if(!/^[a-f0-9-]{36}$/.test(device)) return json({error:'Dispositivo no válido.'},400);
     try {
+      if(url.pathname==='/api/history'&&req.method==='GET') {
+        const {results}=await env.DB.prepare('SELECT * FROM care_history ORDER BY day DESC,id LIMIT 2000').all();
+        return json({records:results});
+      }
       if(url.pathname==='/api/device'&&req.method==='DELETE') {
         await env.DB.batch([env.DB.prepare('DELETE FROM devices WHERE id=?').bind(device),env.DB.prepare('DELETE FROM deliveries WHERE device=?').bind(device)]); return json({ok:true});
       }
       if(req.method!=='POST') return json({error:'Ruta no disponible.'},404);
-      const raw=await req.text(); if(raw.length>16000) return json({error:'Solicitud demasiado grande.'},413);
+      const raw=await req.text(); if(raw.length>(url.pathname==='/api/history/import'?128000:16000)) return json({error:'Solicitud demasiado grande.'},413);
       const body=JSON.parse(raw);
+      const validCare=x=>x&&typeof x.id==='string'&&/^[a-z0-9-]{1,40}$/.test(x.id)&&['food','walk'].includes(x.kind)&&typeof x.day==='string'&&/^20\d{2}-\d{2}-\d{2}$/.test(x.day)&&Number.isFinite(Date.parse(x.day))&&new Date(x.day).toISOString().slice(0,10)===x.day;
+      if(url.pathname==='/api/history') {
+        if(!validCare(body)||typeof body.done!=='boolean'||!Number.isSafeInteger(body.expectedRevision)||body.expectedRevision<0) return json({error:'Cuidado no válido.'},400);
+        const at=new Date().toISOString();
+        const result=body.expectedRevision===0
+          ?await env.DB.prepare('INSERT OR IGNORE INTO care_history(day,id,kind,done,at,revision) VALUES (?,?,?,?,?,1)').bind(body.day,body.id,body.kind,Number(body.done),at).run()
+          :await env.DB.prepare('UPDATE care_history SET done=?,at=?,revision=revision+1 WHERE day=? AND id=? AND kind=? AND revision=?').bind(Number(body.done),at,body.day,body.id,body.kind,body.expectedRevision).run();
+        if(!result.meta.changes)return json({error:'Este cuidado cambió en el otro dispositivo. Actualizamos el registro; revisalo antes de volver a tocar.'},409);
+        return json({ok:true});
+      }
+      if(url.pathname==='/api/history/import') {
+        if(!Array.isArray(body.records)||body.records.length>500||!body.records.every(x=>validCare(x)&&typeof x.at==='string'&&Number.isFinite(Date.parse(x.at))&&Date.parse(x.at)<=Date.now()+300000))return json({error:'El historial local no es válido.'},400);
+        // Never revive a care that another device has undone. Repeated imports are idempotent.
+        for(let offset=0;offset<body.records.length;offset+=50)await env.DB.batch(body.records.slice(offset,offset+50).map(x=>env.DB.prepare('INSERT OR IGNORE INTO care_history(day,id,kind,done,at,revision) VALUES (?,?,?,1,?,1)').bind(x.day,x.id,x.kind,new Date(x.at).toISOString())));
+        return json({ok:true});
+      }
       if(url.pathname==='/api/device') {
         if(!validSubscription(body.subscription)||!validateSchedule(body.schedule,body.zone)) return json({error:'Revisá los horarios o la suscripción.'},400);
         await env.DB.prepare('INSERT INTO devices VALUES (?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET subscription=excluded.subscription,schedule=excluded.schedule,zone=excluded.zone,updated=excluded.updated').bind(device,JSON.stringify(body.subscription),JSON.stringify(body.schedule),body.zone,Date.now()).run(); return json({ok:true});

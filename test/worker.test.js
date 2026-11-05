@@ -10,6 +10,7 @@ const token='test-access-token-with-at-least-32-characters';
 const device='11111111-1111-4111-8111-111111111111';
 function setup(){
  const sql=new DatabaseSync(':memory:');sql.exec(readFileSync(new URL('../migrations/0001.sql',import.meta.url),'utf8'));
+ sql.exec(readFileSync(new URL('../migrations/0002_shared_history.sql',import.meta.url),'utf8'));
  const wrap=(q,args=[])=>({bind:(...values)=>wrap(q,values),run:async()=>({meta:{changes:Number(sql.prepare(q).run(...args).changes)}}),first:async()=>sql.prepare(q).get(...args),all:async()=>({results:sql.prepare(q).all(...args)})});
  const keys=webpush.generateVAPIDKeys();
  const env={DB:{prepare:wrap,batch:async stmts=>Promise.all(stmts.map(s=>s.run()))},APP_KEY_HASH:createHash('sha256').update(token).digest('hex'),VAPID_PUBLIC_KEY:keys.publicKey,VAPID_PRIVATE_KEY:keys.privateKey,VAPID_SUBJECT:'https://example.com',ASSETS:{fetch:()=>new Response('static')}};
@@ -45,4 +46,37 @@ test('suscripción vencida se elimina',async()=>{
  const {env,request,subscription,sql}=setup();await worker.fetch(request('device',{subscription,schedule:[defaults[0]],zone:'America/Montevideo'}),env);
  const original=globalThis.fetch;globalThis.fetch=async()=>new Response('',{status:410});
  try{await worker.scheduled({scheduledTime:Date.parse('2026-11-05T12:00Z')},env);assert.equal(sql.prepare('SELECT count(*) n FROM devices').get().n,0);}finally{globalThis.fetch=original;}
+});
+
+function historyRequest(key=token,deviceId=device){return new Request('https://pochito.example/api/history',{headers:{Authorization:'Bearer '+key,'X-Device-ID':deviceId}});}
+test('dos dispositivos comparten registro; una vista vieja no puede deshacer otro cambio',async()=>{
+ const {env,request}=setup();
+ const care={day:'2026-11-04',id:'morning-food',kind:'food',done:true,expectedRevision:0};
+ assert.equal((await worker.fetch(request('history',care),env)).status,200);
+ const secondDevice='22222222-2222-4222-8222-222222222222';
+ const data=await(await worker.fetch(historyRequest(token,secondDevice),env)).json();
+ assert.equal(data.records[0].done,1);assert.equal(data.records[0].revision,1);
+ // A duplicate or stale first write cannot replace the confirmed state.
+ assert.equal((await worker.fetch(request('history',care),env)).status,409);
+ assert.equal((await worker.fetch(request('history',{...care,done:false,expectedRevision:1}),env)).status,200);
+ assert.equal((await worker.fetch(request('history',{...care,expectedRevision:1}),env)).status,409);
+ const undone=await(await worker.fetch(historyRequest(token,secondDevice),env)).json();
+ assert.equal(undone.records[0].done,0);assert.equal(undone.records[0].revision,2);
+});
+test('historial privado y validación de fechas',async()=>{
+ const {env,request}=setup();
+ assert.equal((await worker.fetch(historyRequest('wrong'),env)).status,401);
+ assert.equal((await worker.fetch(new Request('https://pochito.example/api/history',{headers:{'X-Device-ID':device}}),env)).status,401);
+ assert.equal((await worker.fetch(request('history',{day:'2026-02-30',id:'morning-food',kind:'food',done:true,expectedRevision:0}),env)).status,400);
+ assert.equal((await worker.fetch(request('history',{day:'2026-11-04',id:'morning-food',kind:'food',done:true,expectedRevision:-1}),env)).status,400);
+});
+test('importación conserva fechas, es idempotente y respeta deshacer',async()=>{
+ const {env,request}=setup();
+ const record={day:'2026-11-03',id:'morning-food',kind:'food',at:'2026-11-03T12:00:00.000Z'};
+ assert.equal((await worker.fetch(request('history/import',{records:[record]}),env)).status,200);
+ assert.equal((await worker.fetch(request('history/import',{records:[record]}),env)).status,200);
+ let data=await(await worker.fetch(historyRequest(),env)).json();assert.equal(data.records.length,1);assert.equal(data.records[0].at,record.at);
+ await worker.fetch(request('history',{...record,done:false,expectedRevision:1}),env);
+ await worker.fetch(request('history/import',{records:[record]}),env);
+ data=await(await worker.fetch(historyRequest(),env)).json();assert.equal(data.records[0].done,0);assert.equal(data.records[0].revision,2);
 });
